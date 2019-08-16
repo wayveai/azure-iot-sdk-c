@@ -130,7 +130,6 @@ static const char *DTMD_Process_CmdRequest(const char *jsonPayload, MODEL_DEFINI
 {
     const char *dtdl = NULL;
     JSON_Value* rootValue = NULL;
-    JSON_Object* rootObject = NULL;
     const char* interfaceId = NULL;
 
     if ((NULL == jsonPayload) || (NULL == mdHandle))
@@ -144,23 +143,14 @@ static const char *DTMD_Process_CmdRequest(const char *jsonPayload, MODEL_DEFINI
         {
             LogError("json_parse_string failed");
         }
-        else if ((rootObject = json_value_get_object(rootValue)) == NULL)
+        else if ((interfaceId = json_value_get_string(rootValue)) == NULL)
         {
-            LogError("json_value_get_object fails");
-        }
-        else if ((interfaceId = json_object_get_string(rootObject, digitaltwinSample_GetModelDefinitionCommand_Id)) == NULL)
-        {
-            LogError("json value <%s> is not available", "id");
+            LogError("json_value_get_string fails");
         }
         else if (NULL == (dtdl = Map_GetValueFromKey(mdHandle->map, interfaceId)))
         {
             LogError("Could not retrive value for the given key\n");
         }
-    }
-
-    if (rootObject != NULL)
-    {
-        json_object_clear(rootObject);
     }
 
     if (rootValue != NULL)

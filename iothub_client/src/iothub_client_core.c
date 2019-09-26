@@ -761,31 +761,6 @@ static void dispatch_user_callbacks(IOTHUB_CLIENT_CORE_INSTANCE* iotHubClientIns
     VECTOR_destroy(call_backs);
 }
 
-static void ScheduleWork_Thread_ForMultiplexing(void* iotHubClientHandle)
-{
-    IOTHUB_CLIENT_CORE_INSTANCE* iotHubClientInstance = (IOTHUB_CLIENT_CORE_INSTANCE*)iotHubClientHandle;
-
-    garbageCollectorImpl(iotHubClientInstance);
-    if (Lock(iotHubClientInstance->LockHandle) == LOCK_OK)
-    {
-        VECTOR_HANDLE call_backs = VECTOR_move(iotHubClientInstance->saved_user_callback_list);
-        (void)Unlock(iotHubClientInstance->LockHandle);
-
-        if (call_backs == NULL)
-        {
-            LogError("Failed moving user callbacks");
-        }
-        else
-        {
-            dispatch_user_callbacks(iotHubClientInstance, call_backs);
-        }
-    }
-    else
-    {
-        LogError("failed locking for ScheduleWork_Thread_ForMultiplexing");
-    }
-}
-
 static int ScheduleWork_Thread(void* threadArgument)
 {
     IOTHUB_CLIENT_CORE_INSTANCE* iotHubClientInstance = (IOTHUB_CLIENT_CORE_INSTANCE*)threadArgument;
@@ -822,7 +797,6 @@ static int ScheduleWork_Thread(void* threadArgument)
                     dispatch_user_callbacks(iotHubClientInstance, call_backs);
                 }
 
-
             }
         }
         else
@@ -841,21 +815,15 @@ static int ScheduleWork_Thread(void* threadArgument)
 static IOTHUB_CLIENT_RESULT StartWorkerThreadIfNeeded(IOTHUB_CLIENT_CORE_INSTANCE* iotHubClientInstance)
 {
     IOTHUB_CLIENT_RESULT result;
-    if (iotHubClientInstance->TransportHandle == NULL)
+
+    if (iotHubClientInstance->ThreadHandle == NULL)
     {
-        if (iotHubClientInstance->ThreadHandle == NULL)
+        iotHubClientInstance->StopThread = 0;
+        if (ThreadAPI_Create(&iotHubClientInstance->ThreadHandle, ScheduleWork_Thread, iotHubClientInstance) != THREADAPI_OK)
         {
-            iotHubClientInstance->StopThread = 0;
-            if (ThreadAPI_Create(&iotHubClientInstance->ThreadHandle, ScheduleWork_Thread, iotHubClientInstance) != THREADAPI_OK)
-            {
-                LogError("ThreadAPI_Create failed");
-                iotHubClientInstance->ThreadHandle = NULL;
-                result = IOTHUB_CLIENT_ERROR;
-            }
-            else
-            {
-                result = IOTHUB_CLIENT_OK;
-            }
+            LogError("ThreadAPI_Create failed");
+            iotHubClientInstance->ThreadHandle = NULL;
+            result = IOTHUB_CLIENT_ERROR;
         }
         else
         {
@@ -864,10 +832,9 @@ static IOTHUB_CLIENT_RESULT StartWorkerThreadIfNeeded(IOTHUB_CLIENT_CORE_INSTANC
     }
     else
     {
-        /*Codes_SRS_IOTHUBCLIENT_17_012: [ If the transport connection is shared, the thread shall be started by calling IoTHubTransport_StartWorkerThread. ]*/
-        /*Codes_SRS_IOTHUBCLIENT_17_011: [ If the transport connection is shared, the thread shall be started by calling IoTHubTransport_StartWorkerThread*/
-        result = IoTHubTransport_StartWorkerThread(iotHubClientInstance->TransportHandle, iotHubClientInstance, ScheduleWork_Thread_ForMultiplexing);
+        result = IOTHUB_CLIENT_OK;
     }
+
     return result;
 }
 
@@ -1162,20 +1129,9 @@ void IoTHubClientCore_Destroy(IOTHUB_CLIENT_CORE_HANDLE iotHubClientHandle)
     if (iotHubClientHandle != NULL)
     {
         bool joinClientThread;
-        bool joinTransportThread;
         size_t vector_size;
 
         IOTHUB_CLIENT_CORE_INSTANCE* iotHubClientInstance = (IOTHUB_CLIENT_CORE_INSTANCE*)iotHubClientHandle;
-
-        if (iotHubClientInstance->TransportHandle != NULL)
-        {
-            /*Codes_SRS_IOTHUBCLIENT_01_007: [ The thread created as part of executing IoTHubClient_SendEventAsync or IoTHubClient_SetNotificationMessageCallback shall be joined. ]*/
-            joinTransportThread = IoTHubTransport_SignalEndWorkerThread(iotHubClientInstance->TransportHandle, iotHubClientHandle);
-        }
-        else
-        {
-            joinTransportThread = false;
-        }
 
         /*Codes_SRS_IOTHUBCLIENT_02_043: [ IoTHubClient_Destroy shall lock the serializing lock and signal the worker thread (if any) to end ]*/
         if (Lock(iotHubClientInstance->LockHandle) != LOCK_OK)
@@ -1207,12 +1163,6 @@ void IoTHubClientCore_Destroy(IOTHUB_CLIENT_CORE_HANDLE iotHubClientHandle)
             {
                 LogError("ThreadAPI_Join failed");
             }
-        }
-
-        if (joinTransportThread == true)
-        {
-            /*Codes_SRS_IOTHUBCLIENT_01_007: [ The thread created as part of executing IoTHubClient_SendEventAsync or IoTHubClient_SetNotificationMessageCallback shall be joined. ]*/
-            IoTHubTransport_JoinWorkerThread(iotHubClientInstance->TransportHandle, iotHubClientHandle);
         }
 
         if (Lock(iotHubClientInstance->LockHandle) != LOCK_OK)
@@ -1783,7 +1733,7 @@ IOTHUB_CLIENT_RESULT IoTHubClientCore_SetDeviceTwinCallback(IOTHUB_CLIENT_CORE_H
     {
         IOTHUB_CLIENT_CORE_INSTANCE* iotHubClientInstance = (IOTHUB_CLIENT_CORE_INSTANCE*)iotHubClientHandle;
 
-        /*Codes_SRS_IOTHUBCLIENT_10_003: [** If the transport connection is shared, the thread shall be started by calling `IoTHubTransport_StartWorkerThread`. ]*/
+        /*Codes_SRS_IOTHUBCLIENT_10_003: [** If the transport connection is shared, the thread shall be started by calling `StartWorkerThreadIfNeeded`. ]*/
         if ((result = StartWorkerThreadIfNeeded(iotHubClientInstance)) != IOTHUB_CLIENT_OK)
         {
             /*Codes_SRS_IOTHUBCLIENT_10_004: [** If starting the thread fails, `IoTHubClient_SetDeviceTwinCallback` shall return `IOTHUB_CLIENT_ERROR`. ]*/
@@ -1861,7 +1811,7 @@ IOTHUB_CLIENT_RESULT IoTHubClientCore_SendReportedState(IOTHUB_CLIENT_CORE_HANDL
     {
         IOTHUB_CLIENT_CORE_INSTANCE* iotHubClientInstance = (IOTHUB_CLIENT_CORE_INSTANCE*)iotHubClientHandle;
 
-        /*Codes_SRS_IOTHUBCLIENT_10_015: [** If the transport connection is shared, the thread shall be started by calling `IoTHubTransport_StartWorkerThread`. ]*/
+        /*Codes_SRS_IOTHUBCLIENT_10_015: [** If the transport connection is shared, the thread shall be started by calling `StartWorkerThreadIfNeeded`. ]*/
         if ((result = StartWorkerThreadIfNeeded(iotHubClientInstance)) != IOTHUB_CLIENT_OK)
         {
             /*Codes_SRS_IOTHUBCLIENT_10_016: [** If starting the thread fails, `IoTHubClient_SendReportedState` shall return `IOTHUB_CLIENT_ERROR`. ]*/
@@ -1995,7 +1945,7 @@ IOTHUB_CLIENT_RESULT IoTHubClientCore_SetDeviceMethodCallback(IOTHUB_CLIENT_CORE
     {
         IOTHUB_CLIENT_CORE_INSTANCE* iotHubClientInstance = (IOTHUB_CLIENT_CORE_INSTANCE*)iotHubClientHandle;
 
-        /*Codes_SRS_IOTHUBCLIENT_12_014: [ If the transport handle is null and the worker thread is not initialized, the thread shall be started by calling IoTHubTransport_StartWorkerThread. ]*/
+        /*Codes_SRS_IOTHUBCLIENT_12_014: [ If the transport handle is null and the worker thread is not initialized, the thread shall be started by calling StartWorkerThreadIfNeeded. ]*/
         if ((result = StartWorkerThreadIfNeeded(iotHubClientInstance)) != IOTHUB_CLIENT_OK)
         {
             /*Codes_SRS_IOTHUBCLIENT_12_015: [ If starting the thread fails, IoTHubClient_SetDeviceMethodCallback shall return IOTHUB_CLIENT_ERROR. ]*/
@@ -2078,7 +2028,7 @@ IOTHUB_CLIENT_RESULT IoTHubClientCore_SetDeviceMethodCallback_Ex(IOTHUB_CLIENT_C
     {
         IOTHUB_CLIENT_CORE_INSTANCE* iotHubClientInstance = (IOTHUB_CLIENT_CORE_INSTANCE*)iotHubClientHandle;
 
-        /*Codes_SRS_IOTHUBCLIENT_07_003: [ If the transport handle is NULL and the worker thread is not initialized, the thread shall be started by calling IoTHubTransport_StartWorkerThread. ]*/
+        /*Codes_SRS_IOTHUBCLIENT_07_003: [ If the transport handle is NULL and the worker thread is not initialized, the thread shall be started by calling StartWorkerThreadIfNeeded. ]*/
         if ((result = StartWorkerThreadIfNeeded(iotHubClientInstance)) != IOTHUB_CLIENT_OK)
         {
             /*Codes_SRS_IOTHUBCLIENT_07_004: [ If starting the thread fails, IoTHubClient_SetDeviceMethodCallback_Ex shall return IOTHUB_CLIENT_ERROR. ]*/

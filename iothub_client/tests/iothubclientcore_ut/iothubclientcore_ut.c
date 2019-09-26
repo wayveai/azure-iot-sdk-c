@@ -619,8 +619,6 @@ TEST_SUITE_INITIALIZE(suite_init)
     REGISTER_GLOBAL_MOCK_RETURN(singlylinkedlist_add, TEST_LIST_HANDLE);
     REGISTER_GLOBAL_MOCK_FAIL_RETURN(singlylinkedlist_add, NULL);
 
-    REGISTER_GLOBAL_MOCK_RETURN(IoTHubTransport_SignalEndWorkerThread, true);
-
     REGISTER_GLOBAL_MOCK_HOOK(my_DeviceMethodCallback, my_DeviceMethodCallback_Impl);
 
 #ifdef USE_EDGE_MODULES

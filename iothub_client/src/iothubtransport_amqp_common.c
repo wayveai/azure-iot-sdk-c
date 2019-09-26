@@ -1710,39 +1710,31 @@ int IoTHubTransport_AMQP_Common_Subscribe_DeviceTwin(IOTHUB_DEVICE_HANDLE handle
     {
         AMQP_TRANSPORT_INSTANCE* transport = (AMQP_TRANSPORT_INSTANCE*)handle;
 
-        if (get_number_of_registered_devices(transport) != 1)
-        {
-            LogError("Device Twin not supported on device multiplexing scenario");
-            result = MU_FAILURE;
-        }
-        else
-        {
-            LIST_ITEM_HANDLE list_item = singlylinkedlist_get_head_item(transport->registered_devices);
+        LIST_ITEM_HANDLE list_item = singlylinkedlist_get_head_item(transport->registered_devices);
 
-            // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_136: [If no errors occur, `IoTHubTransport_AMQP_Common_Subscribe_DeviceTwin` shall return zero.]
-            result = RESULT_OK;
+        // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_136: [If no errors occur, `IoTHubTransport_AMQP_Common_Subscribe_DeviceTwin` shall return zero.]
+        result = RESULT_OK;
 
-            while (list_item != NULL)
+        while (list_item != NULL)
+        {
+            AMQP_TRANSPORT_DEVICE_INSTANCE* registered_device;
+
+            if ((registered_device = (AMQP_TRANSPORT_DEVICE_INSTANCE*)singlylinkedlist_item_get_value(list_item)) == NULL)
             {
-                AMQP_TRANSPORT_DEVICE_INSTANCE* registered_device;
-
-                if ((registered_device = (AMQP_TRANSPORT_DEVICE_INSTANCE*)singlylinkedlist_item_get_value(list_item)) == NULL)
-                {
-                    LogError("Failed retrieving registered device information");
-                    result = MU_FAILURE;
-                    break;
-                }
-                // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_134: [amqp_device_subscribe_for_twin_updates() shall be invoked for the registered device, passing `on_device_twin_update_received_callback`]
-                else if (amqp_device_subscribe_for_twin_updates(registered_device->device_handle, on_device_twin_update_received_callback, (void*)registered_device) != RESULT_OK)
-                {
-                    // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_135: [If amqp_device_subscribe_for_twin_updates() fails, `IoTHubTransport_AMQP_Common_Subscribe_DeviceTwin` shall fail and return non-zero.]
-                    LogError("Failed subscribing for device Twin updates");
-                    result = MU_FAILURE;
-                    break;
-                }
-
-                list_item = singlylinkedlist_get_next_item(list_item);
+                LogError("Failed retrieving registered device information");
+                result = MU_FAILURE;
+                break;
             }
+            // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_134: [amqp_device_subscribe_for_twin_updates() shall be invoked for the registered device, passing `on_device_twin_update_received_callback`]
+            else if (amqp_device_subscribe_for_twin_updates(registered_device->device_handle, on_device_twin_update_received_callback, (void*)registered_device) != RESULT_OK)
+            {
+                // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_135: [If amqp_device_subscribe_for_twin_updates() fails, `IoTHubTransport_AMQP_Common_Subscribe_DeviceTwin` shall fail and return non-zero.]
+                LogError("Failed subscribing for device Twin updates");
+                result = MU_FAILURE;
+                break;
+            }
+
+            list_item = singlylinkedlist_get_next_item(list_item);
         }
     }
 
@@ -1760,33 +1752,26 @@ void IoTHubTransport_AMQP_Common_Unsubscribe_DeviceTwin(IOTHUB_DEVICE_HANDLE han
     {
         AMQP_TRANSPORT_INSTANCE* transport = (AMQP_TRANSPORT_INSTANCE*)handle;
 
-        if (get_number_of_registered_devices(transport) != 1)
-        {
-            LogError("Device Twin not supported on device multiplexing scenario");
-        }
-        else
-        {
-            LIST_ITEM_HANDLE list_item = singlylinkedlist_get_head_item(transport->registered_devices);
+        LIST_ITEM_HANDLE list_item = singlylinkedlist_get_head_item(transport->registered_devices);
 
-            while (list_item != NULL)
+        while (list_item != NULL)
+        {
+            AMQP_TRANSPORT_DEVICE_INSTANCE* registered_device;
+
+            if ((registered_device = (AMQP_TRANSPORT_DEVICE_INSTANCE*)singlylinkedlist_item_get_value(list_item)) == NULL)
             {
-                AMQP_TRANSPORT_DEVICE_INSTANCE* registered_device;
-
-                if ((registered_device = (AMQP_TRANSPORT_DEVICE_INSTANCE*)singlylinkedlist_item_get_value(list_item)) == NULL)
-                {
-                    LogError("Failed retrieving registered device information");
-                    break;
-                }
-                // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_142: [amqp_device_unsubscribe_for_twin_updates() shall be invoked for the registered device]
-                else if (amqp_device_unsubscribe_for_twin_updates(registered_device->device_handle) != RESULT_OK)
-                {
-                    // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_143: [If `amqp_device_unsubscribe_for_twin_updates` fails, the error shall be ignored]
-                    LogError("Failed unsubscribing for device Twin updates");
-                    break;
-                }
-
-                list_item = singlylinkedlist_get_next_item(list_item);
+                LogError("Failed retrieving registered device information");
+                break;
             }
+            // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_142: [amqp_device_unsubscribe_for_twin_updates() shall be invoked for the registered device]
+            else if (amqp_device_unsubscribe_for_twin_updates(registered_device->device_handle) != RESULT_OK)
+            {
+                // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_143: [If `amqp_device_unsubscribe_for_twin_updates` fails, the error shall be ignored]
+                LogError("Failed unsubscribing for device Twin updates");
+                break;
+            }
+
+            list_item = singlylinkedlist_get_next_item(list_item);
         }
     }
 }
@@ -1807,38 +1792,30 @@ IOTHUB_CLIENT_RESULT IoTHubTransport_AMQP_Common_GetTwinAsync(IOTHUB_DEVICE_HAND
     {
         AMQP_TRANSPORT_DEVICE_INSTANCE* registered_device = (AMQP_TRANSPORT_DEVICE_INSTANCE*)handle;
 
-        if (get_number_of_registered_devices(registered_device->transport_instance) != 1)
+        AMQP_TRANSPORT_GET_TWIN_CONTEXT* getTwinCtx;
+
+        if ((getTwinCtx = malloc(sizeof(AMQP_TRANSPORT_GET_TWIN_CONTEXT))) == NULL)
         {
-            LogError("Device Twin not supported on device multiplexing scenario");
+            LogError("Failed creating context for get twin");
             result = IOTHUB_CLIENT_ERROR;
         }
         else
         {
-            AMQP_TRANSPORT_GET_TWIN_CONTEXT* getTwinCtx;
+            getTwinCtx->on_get_twin_completed_callback = completionCallback;
+            getTwinCtx->user_context = callbackContext;
 
-            if ((getTwinCtx = malloc(sizeof(AMQP_TRANSPORT_GET_TWIN_CONTEXT))) == NULL)
+            // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_155: [ amqp_device_get_twin_async() shall be invoked for the registered device, passing `on_device_get_twin_completed_callback`]
+            if (amqp_device_get_twin_async(registered_device->device_handle, on_device_get_twin_completed_callback, (void*)getTwinCtx) != RESULT_OK)
             {
-                LogError("Failed creating context for get twin");
+                // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_156: [ If amqp_device_get_twin_async() fails, `IoTHubTransport_AMQP_Common_GetTwinAsync` shall fail and return IOTHUB_CLIENT_ERROR ]
+                LogError("Failed subscribing for device Twin updates");
+                free(getTwinCtx);
                 result = IOTHUB_CLIENT_ERROR;
             }
             else
             {
-                getTwinCtx->on_get_twin_completed_callback = completionCallback;
-                getTwinCtx->user_context = callbackContext;
-
-                // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_155: [ amqp_device_get_twin_async() shall be invoked for the registered device, passing `on_device_get_twin_completed_callback`]
-                if (amqp_device_get_twin_async(registered_device->device_handle, on_device_get_twin_completed_callback, (void*)getTwinCtx) != RESULT_OK)
-                {
-                    // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_156: [ If amqp_device_get_twin_async() fails, `IoTHubTransport_AMQP_Common_GetTwinAsync` shall fail and return IOTHUB_CLIENT_ERROR ]
-                    LogError("Failed subscribing for device Twin updates");
-                    free(getTwinCtx);
-                    result = IOTHUB_CLIENT_ERROR;
-                }
-                else
-                {
-                    // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_157: [ If no errors occur, `IoTHubTransport_AMQP_Common_GetTwinAsync` shall return IOTHUB_CLIENT_OK ]
-                    result = IOTHUB_CLIENT_OK;
-                }
+                // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_157: [ If no errors occur, `IoTHubTransport_AMQP_Common_GetTwinAsync` shall return IOTHUB_CLIENT_OK ]
+                result = IOTHUB_CLIENT_OK;
             }
         }
     }

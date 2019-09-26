@@ -35,7 +35,6 @@ static void my_gballoc_free(void* ptr)
 #define IOTHUB_TRANSPORT_LL_H
 
 #define ENABLE_MOCKS
-#include "azure_c_shared_utility/threadapi.h"
 #include "azure_c_shared_utility/lock.h"
 #include "azure_c_shared_utility/xlogging.h"
 #include "azure_c_shared_utility/vector.h"
@@ -112,7 +111,6 @@ IMPLEMENT_UMOCK_C_ENUM_TYPE(IOTHUB_CLIENT_RESULT, IOTHUB_CLIENT_RESULT_VALUES);
 static const IOTHUB_CLIENT_CORE_HANDLE TEST_IOTHUB_CLIENT_CORE_HANDLE1 = (IOTHUB_CLIENT_CORE_HANDLE)0xDEAD;
 #define TEST_IOTHUB_CLIENT_CORE_HANDLE2 (IOTHUB_CLIENT_CORE_HANDLE)0xDEAF
 #define TEST_CLIENTS_LOCK_HANDLE (LOCK_HANDLE)0x4445
-#define TEST_THREAD_HANDLE (THREAD_HANDLE)0x4442
 
 static const TRANSPORT_LL_HANDLE TEST_TRANSPORT_LL_HANDLE = (TRANSPORT_LL_HANDLE)0x112233;
 static const LOCK_HANDLE TEST_LOCK_HANDLE = (LOCK_HANDLE)0x4443;
@@ -131,8 +129,6 @@ static const VECTOR_HANDLE TEST_VECTOR_HANDLE = (VECTOR_HANDLE)0x4444;
 
 #define TEST_STRING_HANDLE (STRING_HANDLE)0x46
 static const char* TEST_CHAR = "TestChar";
-static THREAD_START_FUNC threadFunc = NULL;
-static void* threadFuncArg = NULL;
 static size_t g_num_of_calls = 0;
 static size_t g_how_many_dowork_calls = 0;
 static TRANSPORT_HANDLE g_transport_handle = NULL;
@@ -238,14 +234,6 @@ static void my_VECTOR_destroy(VECTOR_HANDLE handle)
     my_gballoc_free(handle);
 }
 
-static THREADAPI_RESULT my_ThreadAPI_Create(THREAD_HANDLE* threadHandle, THREAD_START_FUNC func, void* arg)
-{
-    *threadHandle = TEST_THREAD_HANDLE;
-    threadFunc = func;
-    threadFuncArg = arg;
-    return THREADAPI_OK;
-}
-
 static int my_VECTOR_push_back(VECTOR_HANDLE handle, const void* elements, size_t numElements)
 {
     (void)handle;
@@ -254,17 +242,11 @@ static int my_VECTOR_push_back(VECTOR_HANDLE handle, const void* elements, size_
     return 0;
 }
 
-static void my_ThreadAPI_Sleep(unsigned int milliseconds)
-{
-    (void)milliseconds;
-}
-
 static void my_FAKE_IoTHubTransport_DoWork(TRANSPORT_LL_HANDLE handle)
 {
     (void)handle;
     if ((g_transport_handle != NULL) && (g_num_of_calls >= g_how_many_dowork_calls))
     {
-        (void)IoTHubTransport_SignalEndWorkerThread(g_transport_handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1);
     }
     g_num_of_calls++;
 }
@@ -285,8 +267,6 @@ TEST_SUITE_INITIALIZE(suite_init)
     REGISTER_UMOCK_ALIAS_TYPE(TRANSPORT_LL_HANDLE, void*);
     REGISTER_UMOCK_ALIAS_TYPE(LOCK_HANDLE, void*);
     REGISTER_UMOCK_ALIAS_TYPE(VECTOR_HANDLE, void*);
-    REGISTER_UMOCK_ALIAS_TYPE(THREAD_HANDLE, void*);
-    REGISTER_UMOCK_ALIAS_TYPE(THREAD_START_FUNC, void*);
     REGISTER_UMOCK_ALIAS_TYPE(PREDICATE_FUNCTION, void*);
     REGISTER_UMOCK_ALIAS_TYPE(IOTHUB_CLIENT_CORE_LL_HANDLE, void*);
     REGISTER_UMOCK_ALIAS_TYPE(LOCK_RESULT, int);
@@ -305,8 +285,6 @@ TEST_SUITE_INITIALIZE(suite_init)
     REGISTER_GLOBAL_MOCK_HOOK(Lock_Init, my_Lock_Init);
     REGISTER_GLOBAL_MOCK_FAIL_RETURN(Lock_Init, NULL);
     REGISTER_GLOBAL_MOCK_HOOK(Lock_Deinit, my_Lock_Deinit);
-    REGISTER_GLOBAL_MOCK_RETURN(Lock, LOCK_OK);
-    REGISTER_GLOBAL_MOCK_FAIL_RETURN(Lock, LOCK_ERROR);
 
     REGISTER_GLOBAL_MOCK_HOOK(VECTOR_create, real_VECTOR_create);
     REGISTER_GLOBAL_MOCK_FAIL_RETURN(VECTOR_create, NULL);
@@ -322,12 +300,6 @@ TEST_SUITE_INITIALIZE(suite_init)
     REGISTER_GLOBAL_MOCK_HOOK(VECTOR_clear, real_VECTOR_clear);
     REGISTER_GLOBAL_MOCK_HOOK(VECTOR_destroy, real_VECTOR_destroy);
     REGISTER_GLOBAL_MOCK_HOOK(VECTOR_size, real_VECTOR_size);
-
-    REGISTER_GLOBAL_MOCK_HOOK(ThreadAPI_Create, my_ThreadAPI_Create);
-    REGISTER_GLOBAL_MOCK_FAIL_RETURN(ThreadAPI_Create, THREADAPI_ERROR);
-    REGISTER_GLOBAL_MOCK_RETURN(ThreadAPI_Join, THREADAPI_OK);
-    REGISTER_GLOBAL_MOCK_FAIL_RETURN(ThreadAPI_Join, THREADAPI_ERROR);
-    REGISTER_GLOBAL_MOCK_HOOK(ThreadAPI_Sleep, my_ThreadAPI_Sleep);
 }
 
 TEST_SUITE_CLEANUP(suite_cleanup)
@@ -346,8 +318,6 @@ TEST_FUNCTION_INITIALIZE(method_init)
     umock_c_reset_all_calls();
 
     clientDoWork_calls = 0;
-    threadFunc = NULL;
-    threadFuncArg = NULL;
     g_num_of_calls = 0;
     g_how_many_dowork_calls = 0;
     g_transport_handle = NULL;
@@ -502,8 +472,6 @@ TEST_FUNCTION(IoTHubTransport_Destroy_success)
     umock_c_reset_all_calls();
 
     //arrange
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
     STRICT_EXPECTED_CALL(Lock_Deinit(IGNORED_PTR_ARG));
     STRICT_EXPECTED_CALL(FAKE_IoTHubTransport_Destroy(TEST_TRANSPORT_LL_HANDLE));
     STRICT_EXPECTED_CALL(VECTOR_destroy(IGNORED_PTR_ARG));
@@ -523,13 +491,9 @@ TEST_FUNCTION(IoTHubTransport_Destroy_worker_thread_success)
 {
     TRANSPORT_HANDLE handle = NULL;
     handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    (void)IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
     umock_c_reset_all_calls();
 
     //arrange
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(ThreadAPI_Join(IGNORED_PTR_ARG, IGNORED_PTR_ARG));
     STRICT_EXPECTED_CALL(Lock_Deinit(IGNORED_PTR_ARG));
     STRICT_EXPECTED_CALL(FAKE_IoTHubTransport_Destroy(TEST_TRANSPORT_LL_HANDLE));
     STRICT_EXPECTED_CALL(VECTOR_destroy(IGNORED_PTR_ARG));
@@ -549,12 +513,9 @@ TEST_FUNCTION(IoTHubTransport_Destroy_fails)
 {
     TRANSPORT_HANDLE handle = NULL;
     handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    (void)IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
     umock_c_reset_all_calls();
 
     //arrange
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG)).SetReturn(LOCK_ERROR);
-    STRICT_EXPECTED_CALL(ThreadAPI_Join(IGNORED_PTR_ARG, IGNORED_PTR_ARG));
     STRICT_EXPECTED_CALL(Lock_Deinit(IGNORED_PTR_ARG));
     STRICT_EXPECTED_CALL(FAKE_IoTHubTransport_Destroy(TEST_TRANSPORT_LL_HANDLE));
     STRICT_EXPECTED_CALL(VECTOR_destroy(IGNORED_PTR_ARG));
@@ -569,111 +530,6 @@ TEST_FUNCTION(IoTHubTransport_Destroy_fails)
 
     //cleanup
 }
-TEST_FUNCTION(IoTHubTransport_StartWorkerThread_handle_NULL_fail)
-{
-    //arrange
-
-    //act
-    IOTHUB_CLIENT_RESULT result = IoTHubTransport_StartWorkerThread(NULL, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
-
-    //assert
-    ASSERT_ARE_NOT_EQUAL(IOTHUB_CLIENT_RESULT, result, IOTHUB_CLIENT_OK);
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-}
-
-TEST_FUNCTION(IoTHubTransport_StartWorkerThread_core_handle_NULL_fail)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    umock_c_reset_all_calls();
-
-    //act
-    IOTHUB_CLIENT_RESULT result = IoTHubTransport_StartWorkerThread(handle, NULL, clientDoWork);
-
-    //assert
-    ASSERT_ARE_NOT_EQUAL(IOTHUB_CLIENT_RESULT, result, IOTHUB_CLIENT_OK);
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    IoTHubTransport_Destroy(handle);
-}
-
-TEST_FUNCTION(IoTHubTransport_StartWorkerThread_success)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    umock_c_reset_all_calls();
-
-    STRICT_EXPECTED_CALL(ThreadAPI_Create(IGNORED_PTR_ARG, IGNORED_PTR_ARG, handle));
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(VECTOR_size(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(VECTOR_push_back(IGNORED_PTR_ARG, IGNORED_PTR_ARG, 1));
-    STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-
-    //act
-    IOTHUB_CLIENT_RESULT result = IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
-
-    //assert
-    ASSERT_ARE_EQUAL(IOTHUB_CLIENT_RESULT, result, IOTHUB_CLIENT_OK);
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    IoTHubTransport_Destroy(handle);
-}
-
-TEST_FUNCTION(IoTHubTransport_StartWorkerThread_client_call_twice_success)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    (void)IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
-    umock_c_reset_all_calls();
-
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(VECTOR_size(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(VECTOR_find_if(IGNORED_PTR_ARG, IGNORED_PTR_ARG, TEST_IOTHUB_CLIENT_CORE_HANDLE1));
-    STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-
-    //act
-    IOTHUB_CLIENT_RESULT result = IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
-
-    //assert
-    ASSERT_ARE_EQUAL(IOTHUB_CLIENT_RESULT, result, IOTHUB_CLIENT_OK);
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    IoTHubTransport_Destroy(handle);
-}
-
-TEST_FUNCTION(IoTHubTransport_StartWorkerThread_client_call_new_client_success)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    (void)IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
-    umock_c_reset_all_calls();
-
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(VECTOR_size(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(VECTOR_find_if(IGNORED_PTR_ARG, IGNORED_PTR_ARG, TEST_IOTHUB_CLIENT_CORE_HANDLE2));
-    STRICT_EXPECTED_CALL(VECTOR_push_back(IGNORED_PTR_ARG, IGNORED_PTR_ARG, 1));
-    STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-
-    //act
-    IOTHUB_CLIENT_RESULT result = IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE2, clientDoWork);
-
-    //assert
-    ASSERT_ARE_EQUAL(IOTHUB_CLIENT_RESULT, result, IOTHUB_CLIENT_OK);
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    IoTHubTransport_Destroy(handle);
-}
-
 TEST_FUNCTION(IoTHubTransport_GetLLTransport_handle_NULL_fail)
 {
     //act
@@ -704,60 +560,6 @@ TEST_FUNCTION(IoTHubTransport_GetLLTransport_success)
     IoTHubTransport_Destroy(handle);
 }
 
-TEST_FUNCTION(IoTHubTransport_SignalEndWorkerThread_success)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    (void)IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
-    umock_c_reset_all_calls();
-
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(VECTOR_find_if(IGNORED_PTR_ARG, IGNORED_PTR_ARG, IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(VECTOR_erase(IGNORED_PTR_ARG, IGNORED_PTR_ARG, 1));
-    STRICT_EXPECTED_CALL(VECTOR_size(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-
-    //act
-    bool result = IoTHubTransport_SignalEndWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1);
-
-    //assert
-    ASSERT_IS_TRUE(result);
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    IoTHubTransport_Destroy(handle);
-}
-
-TEST_FUNCTION(IoTHubTransport_SignalEndWorkerThread_2_clients_success)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    (void)IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
-    (void)IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE2, clientDoWork);
-    umock_c_reset_all_calls();
-
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(VECTOR_find_if(IGNORED_PTR_ARG, IGNORED_PTR_ARG, TEST_IOTHUB_CLIENT_CORE_HANDLE1));
-    STRICT_EXPECTED_CALL(VECTOR_erase(IGNORED_PTR_ARG, IGNORED_PTR_ARG, 1));
-    STRICT_EXPECTED_CALL(VECTOR_size(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-
-    //act
-    bool result = IoTHubTransport_SignalEndWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1);
-
-    //assert
-    ASSERT_IS_FALSE(result);
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    (void)IoTHubTransport_SignalEndWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE2);
-    IoTHubTransport_Destroy(handle);
-}
-
 TEST_FUNCTION(IoTHubTransport_GetLock_handle_NULL_fail)
 {
     //arrange
@@ -784,126 +586,6 @@ TEST_FUNCTION(IoTHubTransport_GetLock_success)
 
     //assert
     ASSERT_IS_NOT_NULL(lock);
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    IoTHubTransport_Destroy(handle);
-}
-
-TEST_FUNCTION(IoTHubTransport_worker_thread_runs_every_1_ms)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    (void)IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
-    g_transport_handle = handle;
-    umock_c_reset_all_calls();
-
-    g_how_many_dowork_calls = 2;
-
-    for (size_t index = 0; index < g_how_many_dowork_calls+1; index++)
-    {
-        STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-        STRICT_EXPECTED_CALL(FAKE_IoTHubTransport_DoWork(IGNORED_PTR_ARG));
-        if (index == g_how_many_dowork_calls)
-        {
-            // For stopping the threading
-            STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-            STRICT_EXPECTED_CALL(VECTOR_find_if(IGNORED_PTR_ARG, IGNORED_PTR_ARG, IGNORED_PTR_ARG));
-            STRICT_EXPECTED_CALL(VECTOR_erase(IGNORED_PTR_ARG, IGNORED_PTR_ARG, 1));
-            STRICT_EXPECTED_CALL(VECTOR_size(IGNORED_PTR_ARG));
-            STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-            STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-            STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-        }
-        STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-        STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-        STRICT_EXPECTED_CALL(VECTOR_size(IGNORED_PTR_ARG));
-        if (index != g_how_many_dowork_calls)
-        {
-            STRICT_EXPECTED_CALL(VECTOR_element(IGNORED_PTR_ARG, IGNORED_NUM_ARG));
-        }
-        STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-        STRICT_EXPECTED_CALL(ThreadAPI_Sleep(1));
-    }
-    STRICT_EXPECTED_CALL(Lock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(Unlock(IGNORED_PTR_ARG));
-    STRICT_EXPECTED_CALL(ThreadAPI_Exit(IGNORED_NUM_ARG));
-
-    //act
-    threadFunc(threadFuncArg);
-
-    //assert
-    //ASSERT_IS_FALSE(result);
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    (void)IoTHubTransport_SignalEndWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1);
-    (void)IoTHubTransport_SignalEndWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE2);
-    IoTHubTransport_Destroy(handle);
-}
-
-TEST_FUNCTION(IoTHubTransport_JoinWorkerThread_handle_NULL_fail)
-{
-    //arrange
-
-    //act
-    IoTHubTransport_JoinWorkerThread(NULL, TEST_IOTHUB_CLIENT_CORE_HANDLE1);
-
-    //assert
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-}
-
-TEST_FUNCTION(IoTHubTransport_JoinWorkerThread_client_NULL_fail)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    umock_c_reset_all_calls();
-
-    //act
-    IoTHubTransport_JoinWorkerThread(handle, NULL);
-
-    //assert
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    IoTHubTransport_Destroy(handle);
-}
-
-TEST_FUNCTION(IoTHubTransport_JoinWorkerThread_no_workers_success)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    umock_c_reset_all_calls();
-
-    //act
-    IoTHubTransport_JoinWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1);
-
-    //assert
-    ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
-
-    //cleanup
-    IoTHubTransport_Destroy(handle);
-}
-
-TEST_FUNCTION(IoTHubTransport_JoinWorkerThread_success)
-{
-    //arrange
-    TRANSPORT_HANDLE handle = NULL;
-    handle = IoTHubTransport_Create(TEST_CONFIG.protocol, TEST_CONFIG.iotHubName, TEST_CONFIG.iotHubSuffix);
-    (void)IoTHubTransport_StartWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1, clientDoWork);
-    umock_c_reset_all_calls();
-
-    STRICT_EXPECTED_CALL(ThreadAPI_Join(IGNORED_PTR_ARG, IGNORED_PTR_ARG));
-
-    //act
-    IoTHubTransport_JoinWorkerThread(handle, TEST_IOTHUB_CLIENT_CORE_HANDLE1);
-
-    //assert
     ASSERT_ARE_EQUAL(char_ptr, umock_c_get_expected_calls(), umock_c_get_actual_calls());
 
     //cleanup

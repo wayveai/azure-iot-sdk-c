@@ -22,36 +22,50 @@
 #include "iothub_message.h"
 #include "parson.h"
 
+// The create iothub API
+// Comment this line to create the device from transport instead of connection string.
+//#define SAMPLE_USE_CREATE_FROM_CONNECTION_STRING
+
 // The protocol you wish to use should be uncommented
 //
-#define SAMPLE_MQTT
+//#define SAMPLE_MQTT
 //#define SAMPLE_MQTT_OVER_WEBSOCKETS
-//#define SAMPLE_AMQP
+#define SAMPLE_AMQP
 //#define SAMPLE_AMQP_OVER_WEBSOCKETS
 //#define SAMPLE_HTTP
 
 #ifdef SAMPLE_MQTT
-    #include "iothubtransportmqtt.h"
+#include "iothubtransportmqtt.h"
 #endif // SAMPLE_MQTT
 #ifdef SAMPLE_MQTT_OVER_WEBSOCKETS
-    #include "iothubtransportmqtt_websockets.h"
+#include "iothubtransportmqtt_websockets.h"
 #endif // SAMPLE_MQTT_OVER_WEBSOCKETS
 #ifdef SAMPLE_AMQP
-    #include "iothubtransportamqp.h"
+#include "iothubtransportamqp.h"
 #endif // SAMPLE_AMQP
 #ifdef SAMPLE_AMQP_OVER_WEBSOCKETS
-    #include "iothubtransportamqp_websockets.h"
+#include "iothubtransportamqp_websockets.h"
 #endif // SAMPLE_AMQP_OVER_WEBSOCKETS
 #ifdef SAMPLE_HTTP
-    #include "iothubtransporthttp.h"
+#include "iothubtransporthttp.h"
 #endif // SAMPLE_HTTP
 
 #ifdef SET_TRUSTED_CERT_IN_SAMPLES
 #include "certs.h"
 #endif // SET_TRUSTED_CERT_IN_SAMPLES
 
-/* Paste in the your iothub device connection string  */
-static const char* connectionString = "[device connection string]";
+#ifdef SAMPLE_USE_CREATE_FROM_CONNECTION_STRING
+/* Paste in the your iothub device connection string. */
+static const char* connectionString = "xxxxxxx";
+#else
+/* Paste in the your iothub device id, device key and iothub name. */
+static const char* iotHubName = "xxxxxxx";     /*ex: myhub*/
+static const char* iotHubSuffix = "xxxxxxx";
+static const char* deviceId1 = "xxxxxxx";         /*ex: mydevice1*/
+static const char* deviceKey1 = "xxxxxxx";       /*ex: abcdefghijklmnopqrstuvwxyz=*/
+static const char* deviceId2 = "xxxxxxx";
+static const char* deviceKey2 = "xxxxxxx";
+#endif
 
 #define DOWORK_LOOP_NUM     3
 
@@ -238,7 +252,7 @@ static void deviceTwinCallback(DEVICE_TWIN_UPDATE_STATE update_state, const unsi
         {
             free(oldCar->changeOilReminder);
         }
-        
+
         if (oldCar->changeOilReminder == NULL)
         {
             printf("Received a new changeOilReminder = %s\n", newCar->changeOilReminder);
@@ -290,7 +304,8 @@ static void reportedStateCallback(int status_code, void* userContextCallback)
 static void iothub_client_device_twin_and_methods_sample_run(void)
 {
     IOTHUB_CLIENT_TRANSPORT_PROVIDER protocol;
-    IOTHUB_DEVICE_CLIENT_HANDLE iotHubClientHandle;
+    IOTHUB_DEVICE_CLIENT_HANDLE iotHubClientHandle1;
+    IOTHUB_DEVICE_CLIENT_HANDLE iotHubClientHandle2;
 
     // Select the Protocol to use with the connection
 #ifdef SAMPLE_MQTT
@@ -315,19 +330,40 @@ static void iothub_client_device_twin_and_methods_sample_run(void)
     }
     else
     {
-        if ((iotHubClientHandle = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol)) == NULL)
+#ifdef SAMPLE_USE_CREATE_FROM_CONNECTION_STRING
+        iotHubClientHandle1 = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol);
+#else
+        TRANSPORT_HANDLE transport = IoTHubTransport_Create(protocol, iotHubName, iotHubSuffix);
+
+        IOTHUB_CLIENT_CONFIG client_config;
+        // Ensure that fields are correctly set to null.
+        memset(&client_config, 0, sizeof(client_config));
+        client_config.protocol = protocol;
+        client_config.iotHubName = iotHubName;
+        client_config.iotHubSuffix = iotHubSuffix;
+
+        client_config.deviceId = deviceId1;
+        client_config.deviceKey = deviceKey1;
+        iotHubClientHandle1 = IoTHubDeviceClient_CreateWithTransport(transport, &client_config);
+
+        client_config.deviceId = deviceId2;
+        client_config.deviceKey = deviceKey2;
+        iotHubClientHandle2 = IoTHubDeviceClient_CreateWithTransport(transport, &client_config);
+#endif
+        if ((iotHubClientHandle1 == NULL) /* || (iotHubClientHandle2 == NULL)*/)
         {
             (void)printf("ERROR: iotHubClientHandle is NULL!\r\n");
         }
         else
         {
             // Uncomment the following lines to enable verbose logging (e.g., for debugging).
-            //bool traceOn = true;
-            //(void)IoTHubDeviceClient_SetOption(iotHubClientHandle, OPTION_LOG_TRACE, &traceOn);
+            bool traceOn = true;
+            (void)IoTHubDeviceClient_SetOption(iotHubClientHandle1, OPTION_LOG_TRACE, &traceOn);
+            (void)IoTHubDeviceClient_SetOption(iotHubClientHandle2, OPTION_LOG_TRACE, &traceOn);
 
 #ifdef SET_TRUSTED_CERT_IN_SAMPLES
             // For mbed add the certificate information
-            if (IoTHubDeviceClient_SetOption(iotHubClientHandle, "TrustedCerts", certificates) != IOTHUB_CLIENT_OK)
+            if (IoTHubDeviceClient_SetOption(iotHubClientHandle1, "TrustedCerts", certificates) != IOTHUB_CLIENT_OK)
             {
                 (void)printf("failure to set option \"TrustedCerts\"\r\n");
             }
@@ -345,18 +381,28 @@ static void iothub_client_device_twin_and_methods_sample_run(void)
 
             char* reportedProperties = serializeToJson(&car);
 
-            (void)IoTHubDeviceClient_GetTwinAsync(iotHubClientHandle, getCompleteDeviceTwinOnDemandCallback, NULL);
-            (void)IoTHubDeviceClient_SendReportedState(iotHubClientHandle, (const unsigned char*)reportedProperties, strlen(reportedProperties), reportedStateCallback, NULL);
-            (void)IoTHubDeviceClient_SetDeviceMethodCallback(iotHubClientHandle, deviceMethodCallback, NULL);
-            (void)IoTHubDeviceClient_SetDeviceTwinCallback(iotHubClientHandle, deviceTwinCallback, &car);
+            (void)IoTHubDeviceClient_SetDeviceMethodCallback(iotHubClientHandle1, deviceMethodCallback, NULL);
+            (void)IoTHubDeviceClient_SetDeviceMethodCallback(iotHubClientHandle2, deviceMethodCallback, NULL);
+            (void)IoTHubDeviceClient_SetDeviceTwinCallback(iotHubClientHandle1, deviceTwinCallback, &car);
+            (void)IoTHubDeviceClient_GetTwinAsync(iotHubClientHandle1, getCompleteDeviceTwinOnDemandCallback, NULL);
+            (void)IoTHubDeviceClient_GetTwinAsync(iotHubClientHandle2, getCompleteDeviceTwinOnDemandCallback, NULL);
+
+            ThreadAPI_Sleep(3000);
+
+            (void)IoTHubDeviceClient_SendReportedState(iotHubClientHandle1, (const unsigned char*)reportedProperties, strlen(reportedProperties), reportedStateCallback, NULL);
+            (void)IoTHubDeviceClient_SendReportedState(iotHubClientHandle2, (const unsigned char*)reportedProperties, strlen(reportedProperties), reportedStateCallback, NULL);
 
             (void)getchar();
 
-            IoTHubDeviceClient_Destroy(iotHubClientHandle);
+            IoTHubDeviceClient_Destroy(iotHubClientHandle1);
+            IoTHubDeviceClient_Destroy(iotHubClientHandle2);
             free(reportedProperties);
             free(car.changeOilReminder);
         }
 
+#ifndef SAMPLE_USE_CREATE_FROM_CONNECTION_STRING
+        IoTHubTransport_Destroy(transport);
+#endif
         IoTHub_Deinit();
     }
 }

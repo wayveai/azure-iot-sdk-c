@@ -1596,6 +1596,9 @@ void IoTHubTransport_AMQP_Common_DoWork(TRANSPORT_LL_HANDLE handle)
                 // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_020: [If the amqp_connection is OPENED, the transport shall iterate through each registered device and perform a device-specific do_work on each]
                 else if (transport_instance->amqp_connection_state == AMQP_CONNECTION_STATE_OPENED)
                 {
+                    size_t number_of_devices = 0;
+                    size_t number_of_faulty_devices = 0;
+
                     while (list_item != NULL)
                     {
                         AMQP_TRANSPORT_DEVICE_INSTANCE* registered_device;
@@ -1604,24 +1607,28 @@ void IoTHubTransport_AMQP_Common_DoWork(TRANSPORT_LL_HANDLE handle)
                         {
                             LogError("Transport had an unexpected failure during DoWork (failed to fetch a registered_devices list item value)");
                         }
-                        else if (registered_device->number_of_send_event_complete_failures >= MAX_NUMBER_OF_DEVICE_FAILURES)
+                        else if (registered_device->number_of_send_event_complete_failures >= DEVICE_FAILURE_COUNT_RECONNECTION_THRESHOLD)
                         {
-                            LogError("Device '%s' reported a critical failure (events completed sending with failures); connection retry will be triggered.", STRING_c_str(registered_device->device_id));
-
-                            update_state(transport_instance, AMQP_TRANSPORT_STATE_RECONNECTION_REQUIRED);
+                            number_of_faulty_devices++;
                         }
                         else if (IoTHubTransport_AMQP_Common_Device_DoWork(registered_device) != RESULT_OK)
                         {
-                            // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_021: [If DoWork fails for the registered device for more than MAX_NUMBER_OF_DEVICE_FAILURES, connection retry shall be triggered]
-                            if (registered_device->number_of_previous_failures >= MAX_NUMBER_OF_DEVICE_FAILURES)
+                            // Codes_SRS_IOTHUBTRANSPORT_AMQP_COMMON_09_021: [If DoWork fails for the registered device for more than DEVICE_FAILURE_COUNT_RECONNECTION_THRESHOLD, connection retry shall be triggered]
+                            if (registered_device->number_of_previous_failures >= DEVICE_FAILURE_COUNT_RECONNECTION_THRESHOLD)
                             {
-                                LogError("Device '%s' reported a critical failure; connection retry will be triggered.", STRING_c_str(registered_device->device_id));
-
-                                update_state(transport_instance, AMQP_TRANSPORT_STATE_RECONNECTION_REQUIRED);
+                                number_of_faulty_devices++;
                             }
                         }
 
                         list_item = singlylinkedlist_get_next_item(list_item);
+                        number_of_devices++;
+                    }
+
+                    if ((number_of_faulty_devices / number_of_devices) >= DEVICE_MULTIPLEXING_FAULTY_DEVICE_RATIO_RECONNECTION_THRESHOLD)
+                    {
+                        LogError("Reconnection required. %ld of %ld registered devices are failing.", number_of_faulty_devices, number_of_devices);
+
+                        update_state(transport_instance, AMQP_TRANSPORT_STATE_RECONNECTION_REQUIRED);
                     }
                 }
             }

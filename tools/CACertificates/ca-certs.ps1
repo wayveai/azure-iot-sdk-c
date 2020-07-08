@@ -199,6 +199,24 @@ function New-CACertsVerificationCert([string]$requestedCommonName)
 }
 
 
+function New-CACertsVerificationCert2([string]$requestedCommonName, [string] $rootCertificationSubject)
+{
+    $verifyRequestedFileName = ".\verifyCert4.cer"
+    $rootCACert = Get-CACertsCertBySubjectName $rootCertificationSubject
+    Write-Host "Using Signing Cert:::"
+    Write-Host $rootCACert
+
+    $verifyCert = New-CACertsSelfsignedCertificate $requestedCommonName $rootCACert $false
+
+    Export-Certificate -cert $verifyCert -filePath $verifyRequestedFileName -Type Cert
+    if (-not (Test-Path $verifyRequestedFileName))
+    {
+        throw ("Error: CERT file {0} doesn't exist" -f $verifyRequestedFileName)
+    }
+
+    Write-Host ("Certificate with subject CN={0} has been output to {1}" -f $requestedCommonName, (Join-Path (get-location).path $verifyRequestedFileName))
+}
+
 function New-CACertsDevice()
 {
     param([Parameter(Mandatory=$true)][string]$deviceName, 

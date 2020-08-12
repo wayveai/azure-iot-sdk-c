@@ -338,7 +338,7 @@ static void print_traffic_counters()
 }
 
 static void bad_file(const char* filepath, const char* error_message) {
-  fprintf(stderr, "ERROR: Cannot read connection string from file \"%s\", message: %s", filepath, error_message);
+  fprintf(stderr, "ERROR: Cannot read connection string from file \"%s\", message: %s\n", filepath, error_message);
   exit(EXIT_FAILURE);
 }
 
@@ -413,6 +413,7 @@ int main(void)
     IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
 
     char* connectionString = load_connection_string();
+    printf("Connection string: %s\n", connectionString);
 
     // Create the iothub handle here
     device_handle = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol);
@@ -499,9 +500,6 @@ int main(void)
 
     // Free all the sdk subsystem
     IoTHub_Deinit();
-
-    (void)printf("Press any key to continue");
-    getchar();
 
     return 0;
 }

@@ -346,7 +346,7 @@ static char* load_connection_string() {
   static const char* CONNECTION_STRING_ENV = "WAYVE_AZ_CONNECTION_STRING_LOCATION";
   static const char* DEFAULT_CONNECTION_STRING_LOCATION = "/opt/wayve/crypt/az_connection_string.txt";
 
-  char* filepath;
+  const char* filepath;
   char* env_variable;
   char* buffer = NULL;
   long length = 0;
@@ -378,7 +378,7 @@ static char* load_connection_string() {
     bad_file(filepath, "error allocating buffer");
   }
 
-  if (fread(buffer, 1, length, f) < length) {
+  if (fread(buffer, 1, length, file_handle) < length) {
     bad_file(filepath, "error reading whole file");
   }
   fclose(f);

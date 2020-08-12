@@ -344,7 +344,7 @@ static void bad_file(const char* filepath, const char* error_message) {
 
 static char* load_connection_string() {
   static const char* CONNECTION_STRING_ENV = "WAYVE_AZ_CONNECTION_STRING_LOCATION";
-  static const char* DEFAULT_CONNETION_STRING_LOCATION = "/opt/wayve/crypt/az_connection_string.txt";
+  static const char* DEFAULT_CONNECTION_STRING_LOCATION = "/opt/wayve/crypt/az_connection_string.txt";
 
   char* filepath;
   char* env_variable;
@@ -375,11 +375,11 @@ static char* load_connection_string() {
 
   buffer = malloc(length);
   if (buffer == NULL) {
-    bad_file(file_handle, "error allocating buffer");
+    bad_file(filepath, "error allocating buffer");
   }
 
   if (fread(buffer, 1, length, f) < length) {
-    bad_file(file_handle, "error reading whole file");
+    bad_file(filepath, "error reading whole file");
   }
   fclose(f);
 

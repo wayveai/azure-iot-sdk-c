@@ -381,7 +381,7 @@ static char* load_connection_string() {
   if (fread(buffer, 1, length, file_handle) < length) {
     bad_file(filepath, "error reading whole file");
   }
-  fclose(f);
+  fclose(file_handle);
 
   return buffer;
 }

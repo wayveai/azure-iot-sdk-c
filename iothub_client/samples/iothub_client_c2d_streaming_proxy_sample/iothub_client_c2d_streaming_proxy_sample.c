@@ -379,15 +379,16 @@ static char* load_connection_string() {
     bad_file(filepath, "error seeking file");
   }
 
-  buffer = malloc(length);
+  buffer = malloc(length + 1);
   if (buffer == NULL) {
     bad_file(filepath, "error allocating buffer");
   }
 
-  if (fread(buffer, 1, length - 1, file_handle) < length - 1) {
+  if (fread(buffer, 1, length, file_handle) < length) {
     bad_file(filepath, "error reading whole file");
   }
   fclose(file_handle);
+  buffer[length] = '\0';
 
   return buffer;
 }

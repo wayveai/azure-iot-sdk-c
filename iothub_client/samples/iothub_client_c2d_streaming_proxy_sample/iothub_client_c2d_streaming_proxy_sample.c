@@ -67,7 +67,6 @@ MU_DEFINE_ENUM_STRINGS(IO_SEND_RESULT, IO_SEND_RESULT_VALUES)
 MU_DEFINE_ENUM_STRINGS(IO_OPEN_RESULT, IO_OPEN_RESULT_VALUES)
 
 /* Paste in the your iothub connection string  */
-static const char* connectionString = "[device connection string]";
 static const char* localHost = "127.0.0.1"; // Address of the local server to connect to.
 static const int localPort = 22; // Port of the local server to connect to.
 
@@ -338,6 +337,53 @@ static void print_traffic_counters()
     }
 }
 
+static void bad_file(const char* filepath, const char* error_message) {
+  fprintf(stderr, "ERROR: Cannot read connection string from file \"%s\", message: %s", filepath, error_message);
+  exit(EXIT_FAILURE);
+}
+
+static char* load_connection_string() {
+  static const char* CONNECTION_STRING_ENV = "WAYVE_AZ_CONNECTION_STRING_LOCATION";
+  static const char* DEFAULT_CONNETION_STRING_LOCATION = "/opt/wayve/crypt/az_connection_string.txt"
+
+  char* filepath = DEFAULT_CONNECTION_STRING_LOCATION;
+  char* env_variable = getenv(CONNECTION_STRING_ENV);
+  if (env_variable != NULL) {
+    filepath = env_variable;
+  }
+
+  char* buffer = NULL;
+  long length = 0;
+
+  FILE* file_handle = fopen(filepath, "rb");
+  if (file_handle == NULL) {
+    bad_file(filepath, "error opening file");
+  }
+
+  if (fseek(file_handle, 0, SEEK_END) != 0) {
+    bad_file(filepath, "error seeking file");
+  }
+  length = ftell(file_handle);
+  if (length == -1L || length == 0) {
+    bad_file(filepath, "error getting file length");
+  }
+  if (fseek(file_handle, 0, SEEK_SET) != 0) {
+    bad_file(filepath, "error seeking file");
+  }
+
+  buffer = malloc(length);
+  if (buffer == NULL) {
+    bad_file(file_handle, "error allocating buffer");
+  }
+
+  if (fread(buffer, 1, length, f) < length) {
+    bad_file(file_handle, "error reading whole file");
+  }
+  fclose(f);
+
+  return buffer;
+}
+
 int main(void)
 {
     IOTHUB_CLIENT_TRANSPORT_PROVIDER protocol;
@@ -365,6 +411,8 @@ int main(void)
     g_lastTrafficPrintTime = time(NULL);
 
     IOTHUB_DEVICE_CLIENT_HANDLE device_handle;
+
+    char* connectionString = load_connection_string();
 
     // Create the iothub handle here
     device_handle = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol);

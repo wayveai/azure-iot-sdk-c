@@ -378,7 +378,7 @@ static char* load_connection_string() {
     bad_file(filepath, "error allocating buffer");
   }
 
-  if (fread(buffer, 1, length, file_handle) < length) {
+  if (fread(buffer, 1, length - 1, file_handle) < length) {
     bad_file(filepath, "error reading whole file");
   }
   fclose(file_handle);

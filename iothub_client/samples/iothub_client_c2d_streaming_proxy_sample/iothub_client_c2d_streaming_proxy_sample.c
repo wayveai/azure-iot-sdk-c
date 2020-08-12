@@ -344,16 +344,18 @@ static void bad_file(const char* filepath, const char* error_message) {
 
 static char* load_connection_string() {
   static const char* CONNECTION_STRING_ENV = "WAYVE_AZ_CONNECTION_STRING_LOCATION";
-  static const char* DEFAULT_CONNETION_STRING_LOCATION = "/opt/wayve/crypt/az_connection_string.txt"
+  static const char* DEFAULT_CONNETION_STRING_LOCATION = "/opt/wayve/crypt/az_connection_string.txt";
 
-  char* filepath = DEFAULT_CONNECTION_STRING_LOCATION;
-  char* env_variable = getenv(CONNECTION_STRING_ENV);
+  char* filepath;
+  char* env_variable;
+  char* buffer = NULL;
+  long length = 0;
+
+  filepath = DEFAULT_CONNECTION_STRING_LOCATION;
+  env_variable = getenv(CONNECTION_STRING_ENV);
   if (env_variable != NULL) {
     filepath = env_variable;
   }
-
-  char* buffer = NULL;
-  long length = 0;
 
   FILE* file_handle = fopen(filepath, "rb");
   if (file_handle == NULL) {

@@ -396,7 +396,7 @@ static char* load_connection_string() {
     bad_file(filepath, "error seeking file");
   }
 
-  buffer = malloc(length + 1);
+  buffer = (char*)malloc(sizeof(char) * (length + 1));
   if (buffer == NULL) {
     bad_file(filepath, "error allocating buffer");
   }
@@ -443,6 +443,7 @@ int main(void)
 
     // Create the iothub handle here
     device_handle = IoTHubDeviceClient_CreateFromConnectionString(connectionString, protocol);
+    free(connectionString);
 
     if (device_handle == NULL)
     {

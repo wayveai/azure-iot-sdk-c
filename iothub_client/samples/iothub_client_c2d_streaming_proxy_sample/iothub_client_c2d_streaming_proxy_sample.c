@@ -367,7 +367,7 @@ static char* load_connection_string() {
   static const char* CONNECTION_STRING_ENV =
       "WAYVE_AZ_CONNECTION_STRING_LOCATION";
   static const char* DEFAULT_CONNECTION_STRING_LOCATION =
-      "/opt/wayve/crypt/az_connection_string.txt";
+      "/data/wayve/crypt/az_connection_string.txt";
 
   const char* filepath;
   char* env_variable;
